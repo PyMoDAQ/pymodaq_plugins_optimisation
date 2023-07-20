@@ -96,11 +96,15 @@ class InputIntensity:
 
 class GBSAX:
 
-    def __init__(self, input_size=(8, 8)):
+    def __init__(self, input_size=(11, 11)):
+
+        self.object_shape = (768, 1024)
+        self.image_shape: Tuple[int, int] = None
+
         self.target_intensity: np.ndarray = None
-        self.input_intensity: InputIntensity = None
-        self._shape: Tuple[int, int] = None
+
         self._input_size = input_size  # in mm
+        self.input_intensity = InputIntensity(npixels=self.object_shape, size=self.input_size)
 
         self.field_object: np.ndarray = None
         self.field_image: np.nd_array = None
@@ -117,7 +121,7 @@ class GBSAX:
     def input_size(self, input_size: Tuple[float, float]):
         if len(input_size) == 2:
             self._input_size = input_size
-            self.input_intensity = InputIntensity(npixels=self._shape, size=self._input_size)
+            self.input_intensity = InputIntensity(npixels=self.object_shape, size=self._input_size)
 
     def load_image(self, fname: Union[str, Path] = '../resources/cheshirecat_rect.png'):
         img = imread(fname)
@@ -126,28 +130,34 @@ class GBSAX:
         elif len(img.shape) == 3:
             self.target_intensity = rgb2gray(img[..., 0:3])
 
-        self._shape = self.target_intensity.shape
-        self.input_intensity = InputIntensity(npixels=self._shape, size=self.input_size)
+        self.image_shape = self.target_intensity.shape
         self.target_intensity = self.input_intensity.normalise_to_intensity(self.target_intensity)
 
-        self.set_phase_in_object_plane((np.random.rand(*self._shape) - 0.5) * 2 * np.pi)
+        self.set_phase_in_object_plane((np.random.rand(*self.object_shape) - 0.5) * 2 * np.pi)
         self.evolve_field()
 
     def set_phase_in_object_plane(self, phase: np.ndarray):
-        if phase.shape == self._shape:
+        if phase.shape == self.object_shape:
             self.field_object = self.input_intensity.amplitude * np.exp(1j * phase)
 
         else:
             raise ValueError('The phase shape is incoherent with the parameters')
 
     def evolve_field(self):
-        self.field_image = fftshift(fft2(fftshift(self.field_object))) / np.sqrt(np.prod(self._shape))
+        npad = np.abs(np.array(self.object_shape) - np.array(self.image_shape)) / 2
+        npad = tuple(np.asarray(npad, int))
+        field_object_padded = np.pad(self.field_object, ((npad[0], npad[0]), (npad[1], npad[1])),
+                                     constant_values=(0, 0))
+
+        self.field_image = fftshift(fft2(fftshift(field_object_padded))) / \
+                           np.sqrt(np.prod(field_object_padded.shape))
         self._sse = 100 * np.sum(np.abs(np.sqrt(self.target_intensity) - self.field_image)) ** 2 \
-                    / np.prod(self._shape) / np.sum(self.target_intensity)
+                    / np.prod(self.image_shape) / np.sum(self.target_intensity)
         field_image_corrected = np.sqrt(self.target_intensity) * np.exp(1j * np.angle(self.field_image))
         field_object_corrected = ifftshift(ifft2(ifftshift(field_image_corrected)))
 
-        self.set_phase_in_object_plane(np.angle(field_object_corrected))
+        self.set_phase_in_object_plane(np.angle(field_object_corrected[npad[0]+1:npad[0]+1+self.object_shape[0],
+                                                                       npad[1]+1:npad[1]+1+self.object_shape[1]]))
 
     @property
     def sse(self):
