@@ -17,6 +17,7 @@ from pymodaq.utils import math_utils as mutils
 
 logger = set_logger(get_module_name(__file__))
 
+cheshire_cat_path = Path(__file__).parent.parent.joinpath('resources/cheshirecat_rect.png')
 
 try:
     import pyfftw
@@ -123,7 +124,7 @@ class GBSAX:
             self._input_size = input_size
             self.input_intensity = InputIntensity(npixels=self.object_shape, size=self._input_size)
 
-    def load_image(self, fname: Union[str, Path] = '../resources/cheshirecat_rect.png'):
+    def load_image(self, fname: Union[str, Path] = cheshire_cat_path):
         img = imread(fname)
         if len(img.shape) == 2:
             self.target_intensity = img
@@ -134,7 +135,7 @@ class GBSAX:
         self.target_intensity = self.input_intensity.normalise_to_intensity(self.target_intensity)
 
         self.set_phase_in_object_plane((np.random.rand(*self.object_shape) - 0.5) * 2 * np.pi)
-        self.evolve_field()
+        self.propagate_field()
 
     def set_phase_in_object_plane(self, phase: np.ndarray):
         if phase.shape == self.object_shape:
@@ -143,14 +144,22 @@ class GBSAX:
         else:
             raise ValueError('The phase shape is incoherent with the parameters')
 
-    def evolve_field(self):
+    def get_npad(self):
         npad = np.abs(np.array(self.object_shape) - np.array(self.image_shape)) / 2
         npad = tuple(np.asarray(npad, int))
+
+        return npad
+
+    def propagate_field(self):
+        npad = self.get_npad()
         field_object_padded = np.pad(self.field_object, ((npad[0], npad[0]), (npad[1], npad[1])),
                                      constant_values=(0, 0))
 
         self.field_image = fftshift(fft2(fftshift(field_object_padded))) / \
                            np.sqrt(np.prod(field_object_padded.shape))
+
+    def evolve_field(self):
+        npad = self.get_npad()
         self._sse = 100 * np.sum(np.abs(np.sqrt(self.target_intensity) - self.field_image)) ** 2 \
                     / np.prod(self.image_shape) / np.sum(self.target_intensity)
         field_image_corrected = np.sqrt(self.target_intensity) * np.exp(1j * np.angle(self.field_image))
@@ -215,6 +224,7 @@ if __name__ == '__main__':
     object_viewer.show_data(DataFromPlugins('GB', data=[np.angle(gbsax.field_object)]))
 
     def evolve_and_plot():
+        gbsax.propagate_field()
         gbsax.evolve_field()
         image_viewer.show_data(DataFromPlugins('GB', data=[gbsax.target_intensity, np.abs(gbsax.field_image)**2]))
         object_viewer.show_data(DataFromPlugins('GB', data=[np.angle(gbsax.field_object), np.abs(gbsax.field_object)]))

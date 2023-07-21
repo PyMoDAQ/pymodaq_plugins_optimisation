@@ -3,12 +3,10 @@ from pymodaq.utils.daq_utils import ThreadCommand # object used to send info bac
 from pymodaq.utils.parameter import Parameter
 
 
-class PythonWrapperOfYourInstrument:
-    #  TODO Replace this fake class with the import of the real python wrapper of your instrument
-    pass
 
 
-class DAQ_Move_Template(DAQ_Move_base):
+
+class DAQ_Move_MockHolography(DAQ_Move_base):
     """Plugin for the Template Instrument
 
     This object inherits all functionality to communicate with PyMoDAQ Module through inheritance via DAQ_Move_base
