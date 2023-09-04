@@ -109,6 +109,7 @@ class GBSAX:
 
         self.field_object: np.ndarray = None
         self.field_image: np.nd_array = None
+        self.field_object_phase: np.ndarray = None
         self._sse: float = 100
 
     def evolve(self):
@@ -138,11 +139,15 @@ class GBSAX:
         self.propagate_field()
 
     def set_phase_in_object_plane(self, phase: np.ndarray):
+        self.field_object_phase = phase
         if phase.shape == self.object_shape:
             self.field_object = self.input_intensity.amplitude * np.exp(1j * phase)
-
+            self.propagate_field()
         else:
             raise ValueError('The phase shape is incoherent with the parameters')
+
+    def get_phase(self):
+        return self.field_object_phase
 
     def get_npad(self):
         npad = np.abs(np.array(self.object_shape) - np.array(self.image_shape)) / 2
