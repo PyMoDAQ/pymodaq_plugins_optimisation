@@ -1,3 +1,6 @@
+from typing import List, Union
+from pathlib import Path
+
 import numpy as np
 
 from pymodaq_plugins_optimisation.utils import OptimisationModelGeneric
@@ -5,6 +8,9 @@ from pymodaq_plugins_optimisation.hardware.gershberg_saxton import GBSAX
 from pymodaq.utils.managers.modules_manager import ModulesManager
 from pymodaq.utils.logger import set_logger, get_module_name
 from pymodaq.utils.data import DataToExport, DataActuator, DataWithAxes
+from pymodaq.extensions.pid.utils import DataToActuatorPID
+from skimage.io import imread
+from skimage.color import rgb2gray
 
 logger = set_logger(get_module_name(__file__))
 
@@ -52,7 +58,8 @@ class OptimisationModelHolography(OptimisationModelGeneric):
     def ini_model(self):
         self.modules_manager.selected_actuators_name = self.actuators_name
         self.modules_manager.selected_detectors_name = self.detectors_name
-        self.optimisation_algorithm = self.modules_manager.actuators[0].controller
+        self.optimisation_algorithm: GBSAX = self.modules_manager.actuators[0].controller
+        self.optimisation_algorithm.load_image()
 
     def convert_input(self, measurements: DataToExport):
         """
@@ -68,22 +75,24 @@ class OptimisationModelHolography(OptimisationModelGeneric):
         float: the converted input
 
         """
-        return measurements
+        return DataToExport('inputs', data=[measurements.get_data_from_name('GBSAX Intensity')])
 
-    def convert_output(self, outputs: np.ndarray):
+    def convert_output(self, outputs: List[np.ndarray]) -> DataToActuatorPID:
         """
         Convert the output of the Optimisation Controller in units to be fed into the actuators
         Parameters
         ----------
-        outputs: numpy ndarray
-            output value from the controller from which the model extract a value of the same units as the actuator
+        outputs: list of numpy ndarray
+            output value from the controller from which the model extract a value of the same units as the actuators
 
         Returns
         -------
-
+        DataToActuatorPID: derived from DataToExport. Contains value to be fed to the actuators with a a mode
+            attribute, either 'rel' for relative or 'abs' for absolute.
 
         """
-        return outputs
+        return DataToActuatorPID('outputs', mode='abs', data=[DataActuator(self.actuators_name[ind], data=outputs[ind])
+                                                              for ind in range(len(outputs))])
 
     def update_settings(self, param):
         """

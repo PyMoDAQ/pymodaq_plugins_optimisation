@@ -1,3 +1,5 @@
+from typing import List, Union
+
 from pymodaq.utils import gui_utils as gutils
 from pymodaq.utils import daq_utils as utils
 from pyqtgraph.parametertree import Parameter, ParameterTree
@@ -5,11 +7,16 @@ from pymodaq.utils.parameter import pymodaq_ptypes
 from qtpy import QtWidgets, QtCore
 import time
 import numpy as np
-from pymodaq.utils.data import DataToExport, DataActuator
+from pymodaq.utils.data import DataToExport, DataActuator, DataCalculated
+from pymodaq.utils.plotting.data_viewers.viewer0D import Viewer0D
 from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
+from pymodaq.utils.plotting.data_viewers.viewer import ViewerDispatcher
 from pymodaq_plugins_optimisation.utils import get_optimisation_models, OptimisationModelGeneric
 from pymodaq.utils.gui_utils import QLED
+from pymodaq.utils.managers.modules_manager import ModulesManager
+from pymodaq.extensions.pid.utils import DataToActuatorPID
+
 
 config = utils.load_config()
 logger = utils.set_logger(utils.get_module_name(__file__))
@@ -39,6 +46,10 @@ class Optimisation(gutils.CustomApp):
 
     def __init__(self, dockarea, dashboard):
         super().__init__(dockarea, dashboard)
+
+        self.viewer_fitness: Viewer0D = None
+        self.viewer_observable: ViewerDispatcher = None
+
         self.setup_ui()
 
         self.model_class: OptimisationModelGeneric = None
@@ -60,6 +71,18 @@ class Optimisation(gutils.CustomApp):
         self.docks['settings'] = gutils.Dock('Settings')
         self.dockarea.addDock(self.docks['settings'])
         self.docks['settings'].addWidget(self.settings_tree)
+
+        widget_fitness = QtWidgets.QWidget()
+        self.viewer_fitness = Viewer0D(widget_fitness)
+        self.docks['fitness'] = gutils.Dock('Fitness')
+        self.dockarea.addDock(self.docks['fitness'], 'right', self.docks['settings'])
+        self.docks['fitness'].addWidget(widget_fitness)
+
+        widget_observable = QtWidgets.QWidget()
+        self.viewer_observable = ViewerDispatcher(self.dockarea)
+        self.docks['observable'] = gutils.Dock('Observable')
+        self.dockarea.addDock(self.docks['observable'], 'bottom', self.docks['fitness'])
+        self.docks['observable'].addWidget(widget_observable)
 
     def setup_menu(self):
         '''
@@ -92,24 +115,6 @@ class Optimisation(gutils.CustomApp):
         '''
         pass
 
-    def param_deleted(self, param):
-        ''' to be subclassed for actions to perform when one of the param in self.settings has been deleted
-
-        Parameters
-        ----------
-        param: (Parameter) the parameter that has been deleted
-        '''
-        raise NotImplementedError
-
-    def child_added(self, param):
-        ''' to be subclassed for actions to perform when a param  has been added in self.settings
-
-        Parameters
-        ----------
-        param: (Parameter) the parameter that has been deleted
-        '''
-        raise NotImplementedError
-
     def setup_actions(self):
         logger.debug('setting actions')
         self.add_action('quit', 'Quit', 'close2', "Quit program")
@@ -119,7 +124,7 @@ class Optimisation(gutils.CustomApp):
         self.add_widget('runner_led', QLED, toolbar=self.toolbar)
         self.add_action('run', 'Run Optimisation', 'run2', checkable=True)
         self.add_action('stop', 'Stop Optimisation', 'stop')
-        self.add_action('pause', 'Pause Optimisation', 'pause')
+        self.add_action('pause', 'Pause Optimisation', 'pause', checkable=True)
         logger.debug('actions set')
 
     def connect_things(self):
@@ -128,6 +133,10 @@ class Optimisation(gutils.CustomApp):
         self.connect_action('ini_model', self.ini_model)
         self.connect_action('ini_runner', self.ini_optimisation_runner)
         self.connect_action('run', self.run_optimisation)
+        self.connect_action('pause', self.pause_runner)
+
+    def pause_runner(self):
+        self.command_runner.emit(utils.ThreadCommand('pause_PID', self.is_action_checked('pause')))
 
     def quit(self):
         self.dockarea.parent().close()
@@ -166,19 +175,23 @@ class Optimisation(gutils.CustomApp):
             self.get_action('runner_led').set_as_true()
 
     def process_output(self, data: DataToExport):
-        pass
+        self.viewer_fitness.show_data(data.get_data_from_name('fitness'))
+
+        self.viewer_observable.show_data(data[1:])
 
     def enable_controls_opti(self, enable: bool):
         pass
 
     def run_optimisation(self):
         if self.is_action_checked('run'):
-            self.command_runner.emit(utils.ThreadCommand('start', []))
+            self.get_action('run').set_icon('stop')
+            self.command_runner.emit(utils.ThreadCommand('start', {}))
             QtWidgets.QApplication.processEvents()
             QtWidgets.QApplication.processEvents()
-            self.command_runner.emit(utils.ThreadCommand('run'))
+            self.command_runner.emit(utils.ThreadCommand('run', {}))
         else:
-            self.command_runner.emit(utils.ThreadCommand('stop'))
+            self.get_action('run').set_icon('run2')
+            self.command_runner.emit(utils.ThreadCommand('stop', {}))
 
             QtWidgets.QApplication.processEvents()
 
@@ -186,13 +199,19 @@ class Optimisation(gutils.CustomApp):
 class OptimisationRunner(QtCore.QObject):
     algo_output_signal = QtCore.Signal(DataToExport)
 
-    def __init__(self, model_class, module_manager):
+    def __init__(self, model_class: OptimisationModelGeneric, modules_manager: ModulesManager):
         super().__init__()
 
-        self.model_class = model_class
-        self.module_manager = module_manager
+        self.det_done_datas: DataToExport = None
+        self.inputs_from_dets: DataToExport = None
+        self.outputs: List[np.ndarray] = []
+        self.dte_actuators: DataToExport = None
+
+        self.model_class: OptimisationModelGeneric = model_class
+        self.modules_manager: ModulesManager = modules_manager
 
         self.running = True
+        self.paused = False
 
         self.optimisation_algorithm = self.model_class.optimisation_algorithm
 
@@ -201,13 +220,23 @@ class OptimisationRunner(QtCore.QObject):
         """
         """
         if command.command == "run":
-            self.run_opti(*command.attributes)
+            self.run_opti(**command.attribute)
 
         elif command.command == "pause":
-            self.pause_opti(*command.attributes)
+            self.pause_opti(command.attribute)
 
         elif command.command == "stop":
-            self.stop_opti()
+            self.running = False
+
+    def pause_opti(self, pause_state: bool):
+        # for ind, pid in enumerate(self.pids):
+        #     if pause_state:
+        #         pid.set_auto_mode(False)
+        #         logger.info('Stabilization paused')
+        #     else:
+        #         pid.set_auto_mode(True, self.outputs[ind])
+        #         logger.info('Stabilization restarted from pause')
+        self.paused = pause_state
 
     def run_opti(self, sync_detectors=True, sync_acts=False):
         """Start the optimisation loop
@@ -227,7 +256,7 @@ class OptimisationRunner(QtCore.QObject):
                 self.modules_manager.connect_actuators()
 
             self.current_time = time.perf_counter()
-            logger.info('PID loop starting')
+            logger.info('Optimisation loop starting')
             while self.running:
                 # print('input: {}'.format(self.input))
                 # # GRAB DATA FIRST AND WAIT ALL DETECTORS RETURNED
@@ -237,27 +266,32 @@ class OptimisationRunner(QtCore.QObject):
                 self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
 
                 # # EXECUTE THE optimisation
-                self.outputs = []
-                for ind, pid in enumerate(self.pids):
-                    self.outputs.append(pid(self.inputs_from_dets.values[ind]))
+                self.outputs: List[np.ndarray] = []
+                self.outputs = [self.optimisation_algorithm.evolve(self.inputs_from_dets)]
 
-                # # APPLY THE PID OUTPUT TO THE ACTUATORS
-                if self.outputs is None:
-                    self.outputs = [pid.setpoint for pid in self.pids]
+                dte = DataToExport('algo',
+                                   data=[DataCalculated('fitness',
+                                                        data=[np.array([self.optimisation_algorithm.fitness])]),
+                                         ])
+                dte.append(self.inputs_from_dets)
+                self.algo_output_signal.emit(dte)
+                # # # APPLY THE population OUTPUT TO THE ACTUATOR
+                # if self.outputs is None:
+                #     self.outputs = [pid.setpoint for pid in self.pids]
 
                 dt = time.perf_counter() - self.current_time
-                self.outputs_to_actuators = self.model_class.convert_output(self.outputs, dt, stab=True)
+                self.output_to_actuators: DataToActuatorPID = self.model_class.convert_output(self.outputs)
 
                 if not self.paused:
-                    self.modules_manager.move_actuators(self.outputs_to_actuators.values,
-                                                        self.outputs_to_actuators.mode,
+                    self.modules_manager.move_actuators(self.output_to_actuators,
+                                                        self.output_to_actuators.mode,
                                                         polling=False)
 
                 self.current_time = time.perf_counter()
                 QtWidgets.QApplication.processEvents()
-                QThread.msleep(int(self.sample_time * 1000))
+                #QtCore.QThread.msleep(int(self.sample_time * 1000))
 
-            logger.info('PID loop exiting')
+            logger.info('Optimisation loop exiting')
             self.modules_manager.connect_actuators(False)
             self.modules_manager.connect_detectors(False)
 

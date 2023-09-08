@@ -5,7 +5,7 @@ Created the 20/07/2023
 @author: Sebastien Weber
 """
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 import numpy as np
 from skimage.io import imread
@@ -163,15 +163,27 @@ class GBSAX:
         self.field_image = fftshift(fft2(fftshift(field_object_padded))) / \
                            np.sqrt(np.prod(field_object_padded.shape))
 
-    def evolve_field(self):
+    def evolve_field(self) -> np.ndarray:
         npad = self.get_npad()
         self._sse = 100 * np.sum(np.abs(np.sqrt(self.target_intensity) - self.field_image)) ** 2 \
                     / np.prod(self.image_shape) / np.sum(self.target_intensity)
         field_image_corrected = np.sqrt(self.target_intensity) * np.exp(1j * np.angle(self.field_image))
         field_object_corrected = ifftshift(ifft2(ifftshift(field_image_corrected)))
+        field_object_corrected = field_object_corrected[npad[0] + 1:npad[0] + 1 + self.object_shape[0],
+                                 npad[1] + 1:npad[1] + 1 + self.object_shape[1]]
+        self.field_object_phase = np.angle(field_object_corrected)
+        return self.field_object_phase
 
-        self.set_phase_in_object_plane(np.angle(field_object_corrected[npad[0]+1:npad[0]+1+self.object_shape[0],
-                                                                       npad[1]+1:npad[1]+1+self.object_shape[1]]))
+    @property
+    def fitness(self) -> float:
+        return self._sse
+
+    def grab(self):
+        self.propagate_field()
+        return self.field_image
+
+    def evolve(self, input: List[np.ndarray]) -> np.ndarray:
+        return self.evolve_field()
 
     @property
     def sse(self):
