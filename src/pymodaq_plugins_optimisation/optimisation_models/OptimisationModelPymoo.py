@@ -162,8 +162,8 @@ class TargetIntensityMatchProblem(Problem):
         -------
         ndarray of shape (npop)
         """
-        return 100 * np.sum(np.abs(np.subtract(images, np.sqrt(self.target_intensity))) ** 2, axis=(-2, -1)) \
-               / np.prod(images.shape) / np.sum(self.target_intensity)
+        return np.atleast_1d(100 * np.sum(np.abs(np.subtract(images, np.sqrt(self.target_intensity))) ** 2, axis=(-2, -1)) \
+               / np.prod(images.shape) / np.sum(self.target_intensity))
 
     def get_name(self):
         return "Try to match a given image loaded as a numpy array"
@@ -209,6 +209,9 @@ if __name__ == '__main__':
 
     pop = algo.ask()
     algo.evaluator.eval(problem, pop)
+    print('done')
+    print(f'Computed fitness is {pop[0].F}')
+    algo.tell(infills=pop)
 
 
 # class GBSAX:
