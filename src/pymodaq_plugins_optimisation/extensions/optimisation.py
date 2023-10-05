@@ -2,15 +2,14 @@ from typing import List, Union
 
 from pymodaq.utils import gui_utils as gutils
 from pymodaq.utils import daq_utils as utils
-from pyqtgraph.parametertree import Parameter, ParameterTree
-from pymodaq.utils.parameter import pymodaq_ptypes
+from pymodaq.utils.parameter import utils as putils
 from qtpy import QtWidgets, QtCore
 import time
 import numpy as np
 from pymodaq.utils.data import DataToExport, DataActuator, DataCalculated
 from pymodaq.utils.plotting.data_viewers.viewer0D import Viewer0D
-from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
-from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
+
+
 from pymodaq.utils.plotting.data_viewers.viewer import ViewerDispatcher
 from pymodaq_plugins_optimisation.utils import get_optimisation_models, OptimisationModelGeneric
 from pymodaq.utils.gui_utils import QLED
@@ -49,10 +48,9 @@ class Optimisation(gutils.CustomApp):
 
         self.viewer_fitness: Viewer0D = None
         self.viewer_observable: ViewerDispatcher = None
+        self.model_class: OptimisationModelGeneric = None
 
         self.setup_ui()
-
-        self.model_class: OptimisationModelGeneric = None
 
     def setup_docks(self):
         """
@@ -84,6 +82,16 @@ class Optimisation(gutils.CustomApp):
         self.dockarea.addDock(self.docks['observable'], 'bottom', self.docks['fitness'])
         self.docks['observable'].addWidget(widget_observable)
 
+        if len(self.models) != 0:
+            self.get_set_model_params(self.models[0]['name'])
+
+    def get_set_model_params(self, model_name):
+        self.settings.child('models', 'model_params').clearChildren()
+        if len(self.models) > 0:
+            model_class = utils.find_dict_in_list_from_key_val(self.models, 'name', model_name)['class']
+            params = getattr(model_class, 'params')
+            self.settings.child('models', 'model_params').addChildren(params)
+
     def setup_menu(self):
         '''
         to be subclassed
@@ -113,7 +121,9 @@ class Optimisation(gutils.CustomApp):
         ----------
         param: (Parameter) the parameter whose value just changed
         '''
-        pass
+        if param.name() in putils.iter_children(self.settings.child('models', 'model_params'), []):
+            if self.model_class is not None:
+                self.model_class.update_settings(param)
 
     def setup_actions(self):
         logger.debug('setting actions')
@@ -123,7 +133,6 @@ class Optimisation(gutils.CustomApp):
         self.add_action('ini_runner', 'Init the Optimisation Algorithm', 'ini', checkable=True)
         self.add_widget('runner_led', QLED, toolbar=self.toolbar)
         self.add_action('run', 'Run Optimisation', 'run2', checkable=True)
-        self.add_action('stop', 'Stop Optimisation', 'stop')
         self.add_action('pause', 'Pause Optimisation', 'pause', checkable=True)
         logger.debug('actions set')
 
