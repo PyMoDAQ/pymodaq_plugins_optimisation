@@ -124,7 +124,9 @@ class Optimisation(gutils.CustomApp):
         ----------
         param: (Parameter) the parameter whose value just changed
         '''
-        if param.name() in putils.iter_children(self.settings.child('models', 'model_params'), []):
+        if param.name() == 'model_class':
+            self.get_set_model_params(param.value())
+        elif param.name() in putils.iter_children(self.settings.child('models', 'model_params'), []):
             if self.model_class is not None:
                 self.model_class.update_settings(param)
 
@@ -339,7 +341,7 @@ def main(init_qt=True):
 
     dashboard = DashBoard(area)
     daq_scan = None
-    file = Path(get_set_preset_path()).joinpath(f"{'holography_mock'}.xml")
+    file = Path(get_set_preset_path()).joinpath(f"{'holography'}.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
         daq_scan = dashboard.load_extension_from_name('Optimisation')

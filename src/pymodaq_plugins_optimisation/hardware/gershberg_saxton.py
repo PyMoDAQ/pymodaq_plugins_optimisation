@@ -13,7 +13,7 @@ from skimage.color import rgb2gray
 from skimage.transform import rescale, resize
 
 from pymodaq.utils.logger import set_logger, get_module_name
-from pymodaq.utils.data import DataFromPlugins, DataToExport
+from pymodaq.utils.data import DataFromPlugins, DataToExport, DataRaw
 from pymodaq.utils import math_utils as mutils
 
 logger = set_logger(get_module_name(__file__))
@@ -137,11 +137,8 @@ class GBSAX:
             except Exception as e:
                 logger.exception(str(e))
 
-    def load_target_data(self, data: DataToExport):
-        data2D = data.get_data_from_dim('Data2D')
-        if len(data2D) > 0:
-            data_array = data2D[0].data[0]
-            self.set_target(data_array)
+    def load_target_data(self, data: DataRaw):
+        self.set_target(data[0])
 
     def set_target(self, target_intensity: np.ndarray):
 
@@ -162,10 +159,11 @@ class GBSAX:
 
         return target
 
-    def set_phase_in_object_plane(self, phase: np.ndarray):
+    def set_phase_in_object_plane(self, phase: np.ndarray, induced_amplitude: np.ndarray = None):
         self.field_object_phase = phase
         if phase.shape == self.object_shape:
-            self.field_object = self.input_intensity.amplitude * np.exp(1j * phase)
+            self.field_object = self.input_intensity.amplitude *\
+                                (induced_amplitude if induced_amplitude is not None else 1) * np.exp(1j * phase)
             self.propagate_field()
         else:
             raise ValueError('The phase shape is incoherent with the parameters')

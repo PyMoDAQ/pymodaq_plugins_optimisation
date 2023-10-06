@@ -4,14 +4,21 @@ Created the 31/08/2023
 
 @author: Sebastien Weber
 """
+from abc import ABC, abstractproperty
+from typing import List
 from pathlib import Path
 import importlib
 import pkgutil
 import inspect
+import numpy as np
 
+from pymodaq.extensions.pid.utils import DataToActuatorPID, DataToExport
+from pymodaq.utils.managers.modules_manager import ModulesManager
 from pymodaq.utils.config import BaseConfig, USER
 from pymodaq.utils.daq_utils import find_dict_in_list_from_key_val, get_entrypoints
 from pymodaq.utils.logger import set_logger, get_module_name
+from pymodaq.utils.plotting.data_viewers.viewer import ViewersEnum
+from pymodaq.utils.parameter import Parameter
 
 
 logger = set_logger(get_module_name(__file__))
@@ -23,8 +30,84 @@ class Config(BaseConfig):
     config_name = f"config_{__package__.split('pymodaq_plugins_')[1]}"
 
 
-class OptimisationModelGeneric:
+class DataToActuatorOpti(DataToActuatorPID):
     pass
+
+
+class OptimisationModelGeneric(ABC):
+    optimisation_algorithm = abstractproperty()
+
+    actuators_name: List[str] = []
+    detectors_name: List[str] = []
+    observables_dim: List[ViewersEnum] = []
+
+    params = []
+
+    def __init__(self, optimisation_controller: 'Optimisation'):
+        self.optimisation_controller = optimisation_controller  # instance of the pid_controller using this model
+        self.modules_manager: ModulesManager = optimisation_controller.modules_manager
+
+        self.settings = self.optimisation_controller.settings.child('models', 'model_params')  # set of parameters
+        self.check_modules(self.modules_manager)
+
+    def check_modules(self, modules_manager):
+        for act in self.actuators_name:
+            if act not in modules_manager.actuators_name:
+                logger.warning(f'The actuator {act} defined in the PID model is not present in the Dashboard')
+                return False
+        for det in self.detectors_name:
+            if det not in modules_manager.detectors_name:
+                logger.warning(f'The detector {det} defined in the PID model is not present in the Dashboard')
+
+    def update_detector_names(self):
+        names = self.optimisation_controller.settings.child('main_settings', 'detector_modules').value()['selected']
+        self.data_names = []
+        for name in names:
+            name = name.split('//')
+            self.data_names.append(name)
+
+    def update_settings(self, param: Parameter):
+        """
+        Get a parameter instance whose value has been modified by a user on the UI
+        To be overwritten in child class
+        """
+        ...
+
+    def ini_models(self):
+        self.modules_manager.selected_actuators_name = self.actuators_name
+        self.modules_manager.selected_detectors_name = self.detectors_name
+
+    def convert_input(self, measurements: DataToExport) -> DataToExport:
+        """
+        Convert the measurements in the units to be fed to the Optimisation Controller
+        Parameters
+        ----------
+        measurements: DataToExport
+            data object exported from the detectors from which the model extract a value of the same units as
+            the setpoint
+
+        Returns
+        -------
+        DataToExport
+
+        """
+        raise NotImplementedError
+
+    def convert_output(self, outputs: List[np.ndarray]) -> DataToActuatorOpti:
+        """
+        Convert the output of the Optimisation Controller in units to be fed into the actuators
+        Parameters
+        ----------
+        outputs: list of numpy ndarray
+            output value from the controller from which the model extract a value of the same units as the actuators
+
+        Returns
+        -------
+        DataToActuatorOpti: derived from DataToExport. Contains value to be fed to the actuators with a a mode
+            attribute, either 'rel' for relative or 'abs' for absolute.
+
+        """
+        raise NotImplementedError
 
 
 def get_optimisation_models(model_name=None):
