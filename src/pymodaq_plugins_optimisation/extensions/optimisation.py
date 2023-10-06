@@ -70,16 +70,19 @@ class Optimisation(gutils.CustomApp):
         self.dockarea.addDock(self.docks['settings'])
         self.docks['settings'].addWidget(self.settings_tree)
 
-        widget_fitness = QtWidgets.QWidget()
-        self.viewer_fitness = Viewer0D(widget_fitness)
-        self.docks['fitness'] = gutils.Dock('Fitness')
-        self.dockarea.addDock(self.docks['fitness'], 'right', self.docks['settings'])
-        self.docks['fitness'].addWidget(widget_fitness)
+        # widget_fitness = QtWidgets.QWidget()
+        # self.viewer_fitness = Viewer0D(widget_fitness)
+        # self.docks['fitness'] = gutils.Dock('Fitness')
+        # self.dockarea.addDock(self.docks['fitness'], 'right', self.docks['settings'])
+        # self.docks['fitness'].addWidget(widget_fitness)
 
         widget_observable = QtWidgets.QWidget()
-        self.viewer_observable = ViewerDispatcher(self.dockarea)
+        widget_observable.setLayout(QtWidgets.QHBoxLayout())
+        observable_dockarea = gutils.DockArea()
+        widget_observable.layout().addWidget(observable_dockarea)
+        self.viewer_observable = ViewerDispatcher(observable_dockarea)
         self.docks['observable'] = gutils.Dock('Observable')
-        self.dockarea.addDock(self.docks['observable'], 'bottom', self.docks['fitness'])
+        self.dockarea.addDock(self.docks['observable'], 'right', self.docks['settings'])
         self.docks['observable'].addWidget(widget_observable)
 
         if len(self.models) != 0:
@@ -167,6 +170,9 @@ class Optimisation(gutils.CustomApp):
             self.get_action('model_led').set_as_true()
             self.set_action_enabled('ini_model', False)
 
+            self.viewer_observable.update_viewers(['Viewer0D'] + self.model_class.observables_dim,
+                                                  ['Fitness', 'Observable', 'Individual'])
+
         except Exception as e:
             logger.exception(str(e))
 
@@ -184,9 +190,10 @@ class Optimisation(gutils.CustomApp):
             self.get_action('runner_led').set_as_true()
 
     def process_output(self, data: DataToExport):
-        self.viewer_fitness.show_data(data.get_data_from_name('fitness'))
-
-        self.viewer_observable.show_data(data[1:])
+        # fitness
+        # self.viewer_fitness.show_data(data.get_data_from_name('fitness'))
+        # data.remove()
+        self.viewer_observable.show_data(data)
 
     def enable_controls_opti(self, enable: bool):
         pass
@@ -282,14 +289,17 @@ class OptimisationRunner(QtCore.QObject):
                                    data=[DataCalculated('fitness',
                                                         data=[np.array([self.optimisation_algorithm.fitness])]),
                                          ])
-                dte.append(self.inputs_from_dets)
-                self.algo_output_signal.emit(dte)
+
                 # # # APPLY THE population OUTPUT TO THE ACTUATOR
                 # if self.outputs is None:
                 #     self.outputs = [pid.setpoint for pid in self.pids]
 
                 dt = time.perf_counter() - self.current_time
                 self.output_to_actuators: DataToActuatorPID = self.model_class.convert_output(self.outputs)
+
+                dte.append(self.inputs_from_dets)
+                dte.append(self.output_to_actuators)
+                self.algo_output_signal.emit(dte)
 
                 if not self.paused:
                     self.modules_manager.move_actuators(self.output_to_actuators,
@@ -329,7 +339,7 @@ def main(init_qt=True):
 
     dashboard = DashBoard(area)
     daq_scan = None
-    file = Path(get_set_preset_path()).joinpath(f"{'holography'}.xml")
+    file = Path(get_set_preset_path()).joinpath(f"{'holography_mock'}.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
         daq_scan = dashboard.load_extension_from_name('Optimisation')

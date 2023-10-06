@@ -10,6 +10,7 @@ from typing import Union, Tuple, List
 import numpy as np
 from skimage.io import imread
 from skimage.color import rgb2gray
+from skimage.transform import rescale, resize
 
 from pymodaq.utils.logger import set_logger, get_module_name
 from pymodaq.utils.data import DataFromPlugins, DataToExport
@@ -144,7 +145,7 @@ class GBSAX:
 
     def set_target(self, target_intensity: np.ndarray):
 
-        target_intensity = self.check_target_size_larger_than_object(target_intensity)
+        target_intensity = self.check_target_object_ratio(target_intensity)
 
         self.target_intensity = target_intensity
 
@@ -154,18 +155,11 @@ class GBSAX:
         self.set_phase_in_object_plane((np.random.rand(*self.object_shape) - 0.5) * 2 * np.pi)
         self.propagate_field()
 
-    def check_target_size_larger_than_object(self, target: np.ndarray):
-        size_ratio = target.shape[0] / target.shape[1]
-        while True:
-            larger = True
-            for ind in range(len(target.shape)):
-                if target.shape[ind] < self.object_shape[ind]:
-                    larger = False
-                    break
-            if not larger:
-                target = np.pad(target, ((100, 100), tuple((np.array((100, 100))/size_ratio).astype(int))))
-            else:
-                break
+    def check_target_object_ratio(self, target: np.ndarray):
+
+        ratio = np.max(np.array(self.object_shape) / np.array(target.shape))
+        target = rescale(target, 1.1 * ratio)
+
         return target
 
     def set_phase_in_object_plane(self, phase: np.ndarray):

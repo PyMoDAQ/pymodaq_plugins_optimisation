@@ -15,7 +15,7 @@ from skimage.color import rgb2gray
 logger = set_logger(get_module_name(__file__))
 
 
-class OptimisationModelHolographyMock(OptimisationModelGeneric):
+class OptimisationModelHolography(OptimisationModelGeneric):
 
     optimisation_algorithm = GBSAX()
 
@@ -36,6 +36,7 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
         self.check_modules(self.modules_manager)
         self.other_detectors: List[str] = []
         self._temp_target_data: np.ndarray = None
+        self.polyfit: np.polynomial.Polynomial = None
 
     def check_modules(self, modules_manager):
         for act in self.actuators_name:
@@ -94,9 +95,14 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
         source_limits.extend(self.other_detectors)
 
         self.settings.child('target_source').setLimits(source_limits)
-        self.optimisation_algorithm: GBSAX = self.modules_manager.actuators[0].controller  # specific of the MockModel
+        #self.optimisation_algorithm: GBSAX = self.modules_manager.actuators[0].controller  # specific of the MockModel
 
         self.optimisation_algorithm.load_image()
+
+        calib = np.load(Path(r'C:\Data\2023\calibration_holography.npy'))
+        grey = calib[0, :]
+        phase = calib[1, :]
+        self.polyfit = np.polynomial.Polynomial.fit(phase, grey, 11)
 
     def convert_input(self, measurements: DataToExport) -> DataToExport:
         """
@@ -130,9 +136,10 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
             attribute, either 'rel' for relative or 'abs' for absolute.
 
         """
-        return DataToActuatorPID('outputs', mode='abs', data=[DataActuator(self.actuators_name[ind], data=outputs[ind])
-                                                              for ind in range(len(outputs))])
-
+        self.optimisation_algorithm.set_phase_in_object_plane(outputs[0])
+        return DataToActuatorPID('outputs', mode='abs', data=[
+            DataActuator(self.actuators_name[ind], data=self.polyfit(outputs[ind]))
+            for ind in range(len(outputs))])
 
 
 if __name__ == '__main__':
