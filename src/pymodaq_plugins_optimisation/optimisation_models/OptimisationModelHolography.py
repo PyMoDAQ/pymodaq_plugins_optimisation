@@ -62,9 +62,11 @@ class OptimisationModelHolography(OptimisationModelHolographyMock):
 
         """
         phase = outputs[0]
-        grey_levels = self.phase_polyfit(outputs[0])
+        phase_wraped = self.wrap(phase)
+        phase_linear = self.add_linear_phase(phase_wraped, self.settings['move_y'], self.settings['move_x'])
+        grey_levels = self.phase_polyfit(phase_linear)
         induced_amplitude = None
-        self.optimisation_algorithm.set_phase_in_object_plane(phase, induced_amplitude=induced_amplitude)
+        self.optimisation_algorithm.set_phase_in_object_plane(phase_wraped, induced_amplitude=induced_amplitude)
         return DataToActuatorOpti('outputs', mode='abs', data=[
             DataActuator(self.actuators_name[0], data=grey_levels)])
 

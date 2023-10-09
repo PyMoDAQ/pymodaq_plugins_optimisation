@@ -35,6 +35,10 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
         {'title': 'File path:', 'name': 'target_file', 'type': 'browsepath', 'value': '', 'filetype': True},
         {'title': 'Send target to algo', 'name': 'send_target', 'type': 'bool_push', 'label': 'Send'},
         {'title': 'Apply Mask', 'name': 'apply_mask', 'type': 'bool',},
+        {'title': 'Flip ud', 'name': 'flipud', 'type': 'bool', 'value': 'False'},
+        {'title': 'Flip lr', 'name': 'fliplr', 'type': 'bool', 'value': 'True'},
+        {'title': 'Move X', 'name': 'move_x', 'type': 'float', 'value': 0.},
+        {'title': 'Move Y', 'name': 'move_y', 'type': 'float', 'value': 0.},
     ]
 
     def __init__(self, optimisation_controller: 'Optimisation'):
@@ -77,6 +81,14 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
         elif param.name() == 'send_target':
             self.load_target()
 
+    def transform_image(self, data_in: DataWithAxes):
+        data_out = data_in.deepcopy()
+        if self.settings['flipud']:
+            data_out = data_out.flipud()
+        if self.settings['fliplr']:
+            data_out = data_out.fliplr()
+        return data_out
+
     def get_target_from_detector(self, dte: DataToExport):
         self._temp_target_data = dte.get_data_from_dim('Data2D')[0]
         self.viewer_target.show_data(self._temp_target_data)
@@ -96,6 +108,7 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
                 logger.exception(str(e))
 
     def load_target(self):
+
         if self.settings['apply_mask']:
             data = self._temp_target_data.deepcopy()
             data.data[0] = np.zeros(data.data[0].shape)
@@ -103,9 +116,11 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
                          int(self.mask.x()): int(self.mask.x()+self.mask.width())] = \
                 self._temp_target_data.data[0][int(self.mask.y()): int(self.mask.y()+self.mask.height()),
                 int(self.mask.x()): int(self.mask.x()+self.mask.width())]
+            data = self.transform_image(data)
             self.optimisation_algorithm.load_target_data(data)
         else:
-            self.optimisation_algorithm.load_target_data(self._temp_target_data)
+            data = self.transform_image(self._temp_target_data)
+            self.optimisation_algorithm.load_target_data(data)
 
     def set_source(self):
         self.other_detectors = self.modules_manager.detectors_name
@@ -157,9 +172,21 @@ class OptimisationModelHolographyMock(OptimisationModelGeneric):
             attribute, either 'rel' for relative or 'abs' for absolute.
 
         """
-        return DataToActuatorOpti('outputs', mode='abs', data=[DataActuator(self.actuators_name[ind], data=outputs[ind])
-                                                              for ind in range(len(outputs))])
+        phase = outputs[0]
+        phase = self.add_linear_phase(phase, self.settings['move_y'], self.settings['move_x'])
+        return DataToActuatorOpti('outputs', mode='abs', data=[DataActuator(self.actuators_name[0], data=phase)])
 
+    def add_linear_phase(self, phase: np.ndarray, move_y: float, move_x: float):
+        linphase_x = np.linspace(0, 2*np.pi, phase.shape[1]) * move_x * 10
+        linphase_y = np.linspace(0, 2*np.pi, phase.shape[0]) * move_y * 10
+
+        linear_phase = np.zeros(phase.shape)
+        for ind in range(phase.shape[0]):
+            linear_phase[ind, :] = linphase_x + linphase_y[ind]
+        return self.wrap(linear_phase + phase)
+
+    def wrap(self, x):
+        return (x-np.min(x)) % (2*np.pi)
 
 
 if __name__ == '__main__':

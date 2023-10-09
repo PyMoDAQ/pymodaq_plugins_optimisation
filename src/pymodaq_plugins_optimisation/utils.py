@@ -131,7 +131,7 @@ def get_optimisation_models(model_name=None):
                         model_module = importlib.import_module(f'{module_name}.optimisation_models.{mod.name}', module)
                         classes = inspect.getmembers(model_module, inspect.isclass)
                         for name, klass in classes:
-                            if klass.__base__ is OptimisationModelGeneric:
+                            if klass.__name__ in model_module.__name__:
                                 models_import.append({'name': mod.name, 'module': model_module, 'class': klass})
                                 break
 
