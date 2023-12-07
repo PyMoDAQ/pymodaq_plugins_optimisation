@@ -17,7 +17,7 @@ from pymodaq.utils.managers.modules_manager import ModulesManager
 from pymodaq.extensions.pid.utils import DataToActuatorPID
 
 
-config = utils.load_config()
+from pymodaq_plugins_optimisation import config
 logger = utils.set_logger(utils.get_module_name(__file__))
 
 EXTENSION_NAME = 'Optimisation'
