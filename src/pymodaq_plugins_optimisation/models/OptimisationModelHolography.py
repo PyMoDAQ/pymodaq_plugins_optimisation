@@ -1,13 +1,13 @@
-from typing import List, Union
+from typing import List
 from pathlib import Path
 
 import numpy as np
 
 
 from pymodaq.utils.logger import set_logger, get_module_name
-from pymodaq.utils.data import DataToExport, DataActuator, DataWithAxes, DataRaw
+from pymodaq.utils.data import DataToExport, DataActuator, DataRaw
 
-from pymodaq_plugins_optimisation.optimisation_models.OptimisationModelHolographyMock import \
+from pymodaq_plugins_optimisation.models.OptimisationModelHolographyMock import \
     OptimisationModelHolographyMock, DataToActuatorOpti, OptimisationModelGeneric
 
 logger = set_logger(get_module_name(__file__))

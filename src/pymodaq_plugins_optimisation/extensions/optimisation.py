@@ -11,10 +11,9 @@ from pymodaq.utils.plotting.data_viewers.viewer0D import Viewer0D
 
 
 from pymodaq.utils.plotting.data_viewers.viewer import ViewerDispatcher
-from pymodaq_plugins_optimisation.utils import get_optimisation_models, OptimisationModelGeneric
+from pymodaq_plugins_optimisation.utils import get_optimisation_models, OptimisationModelGeneric, DataToActuatorOpti
 from pymodaq.utils.gui_utils import QLED
 from pymodaq.utils.managers.modules_manager import ModulesManager
-from pymodaq.extensions.pid.utils import DataToActuatorPID
 
 
 from pymodaq_plugins_optimisation import config
@@ -297,7 +296,7 @@ class OptimisationRunner(QtCore.QObject):
                 #     self.outputs = [pid.setpoint for pid in self.pids]
 
                 dt = time.perf_counter() - self.current_time
-                self.output_to_actuators: DataToActuatorPID = self.model_class.convert_output(self.outputs)
+                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
 
                 dte.append(self.inputs_from_dets)
                 dte.append(self.output_to_actuators)

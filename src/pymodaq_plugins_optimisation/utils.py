@@ -11,6 +11,7 @@ import importlib
 import pkgutil
 import inspect
 import numpy as np
+import warnings
 
 from pymodaq.extensions.pid.utils import DataToActuatorPID, DataToExport
 from pymodaq.utils.managers.modules_manager import ModulesManager
@@ -30,8 +31,30 @@ class Config(BaseConfig):
     config_name = f"config_{__package__.split('pymodaq_plugins_')[1]}"
 
 
-class DataToActuatorOpti(DataToActuatorPID):
-    pass
+class DataToActuatorOpti(DataToExport):
+    """ Particular case of a DataToExport adding one named parameter to indicate what kind of change should be applied
+    to the actuators, absolute or relative
+
+    Attributes
+    ----------
+    mode: str
+        Adds an attribute called mode holding a string describing the type of change: relative or absolute
+
+    Parameters
+    ---------
+    mode: str
+        either 'rel' or 'abs' for a relative or absolute change of the actuator's values
+    """
+
+    def __init__(self, *args, mode='rel', **kwargs):
+        if mode not in ['rel', 'abs']:
+            warnings.warn('Incorrect mode for the actuators, switching to default relative mode: rel')
+            mode = 'rel'
+        kwargs.update({'mode': mode})
+        super().__init__(*args, **kwargs)
+
+    def __repr__(self):
+        return f'{super().__repr__()}: {self.mode}'
 
 
 class OptimisationModelGeneric(ABC):

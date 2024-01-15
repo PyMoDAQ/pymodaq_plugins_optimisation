@@ -15,7 +15,6 @@ from pymodaq.utils.managers.modules_manager import ModulesManager
 from pymodaq.utils.logger import set_logger, get_module_name
 from pymodaq.utils.data import DataToExport, DataActuator, DataWithAxes
 from pymodaq.utils import math_utils as mutils
-from pymodaq.extensions.pid.utils import DataToActuatorPID
 from skimage.io import imread
 from skimage.color import rgb2gray
 
@@ -400,6 +399,3 @@ if __name__ == '__main__':
 #         if param.name() == '':
 #             pass
 
-
-if __name__ == '__main__':
-    pass
