@@ -13,3 +13,13 @@ license = 'MIT'
 [plugin-install]
 #packages required for your plugin:
 packages-required = ['pymodaq>=4.0.0', 'pyfftw', 'scikit-image']
+conda-install = []
+
+
+[features]  # defines the plugin features contained into this plugin
+instruments = true  # true if plugin contains instrument classes (else false, notice the lowercase for toml files)
+extensions = true  # true if plugins contains dashboard extensions
+pid_models = false  # true if plugins contains pid models, will be deprecated, use models
+h5exporters = false  # true if plugin contains custom h5 file exporters
+scanners = false  # true if plugin contains custom scan layout (daq_scan extensions)
+models = true  # true if plugins contains pid models or other type of models (optimisation...)

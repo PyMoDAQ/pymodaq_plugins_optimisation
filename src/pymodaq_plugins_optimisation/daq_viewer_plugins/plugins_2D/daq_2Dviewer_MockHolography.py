@@ -64,15 +64,9 @@ class DAQ_2DViewer_MockHolography(DAQ_Viewer_base):
             self.controller.load_image()
 
         self.dte_signal_temp.emit(DataToExport('GBSAX',
-                                               data=[DataFromPlugins(name='GBSAX target',
-                                                                     data=[self.controller.target_intensity],
-                                                                     dim='Data2D', labels=['Target intensity']),
-                                                     DataFromPlugins(name='GBSAX Intensity',
+                                               data=[DataFromPlugins(name='GBSAX Intensity',
                                                                      data=[np.abs(self.controller.field_image)**2],
                                                                      dim='Data2D', labels=['Field Object intensity']),
-                                                     DataFromPlugins(name='GBSAX Phase',
-                                                                     data=[np.angle(self.controller.field_image)],
-                                                                     dim='Data2D', labels=['Field Object Phase']),
                                                      ]))
 
         info = "GBSAX initialized"
@@ -95,17 +89,11 @@ class DAQ_2DViewer_MockHolography(DAQ_Viewer_base):
             others optionals arguments
         """
 
-        self.dte_signal_temp.emit(DataToExport('GBSAX',
-                                               data=[DataFromPlugins(name='GBSAX target',
-                                                                     data=[self.controller.target_intensity],
-                                                                     dim='Data2D', labels=['Target intensity']),
-                                                     DataFromPlugins(name='GBSAX Intensity',
-                                                                     data=[np.abs(self.controller.field_image)**2],
-                                                                     dim='Data2D', labels=['Field Object intensity']),
-                                                     DataFromPlugins(name='GBSAX Phase',
-                                                                     data=[np.angle(self.controller.field_image)],
-                                                                     dim='Data2D', labels=['Field Object Phase']),
-                                                     ]))
+        self.dte_signal.emit(DataToExport('GBSAX',
+                                          data=[DataFromPlugins(name='GBSAX Intensity',
+                                                                data=[np.abs(self.controller.field_image)**2],
+                                                                dim='Data2D', labels=['Field Object intensity']),
+                                                ]))
 
     def stop(self):
         """Stop the current grab hardware wise if necessary"""

@@ -5,14 +5,15 @@ Created the 20/07/2023
 @author: Sebastien Weber
 """
 from pathlib import Path
-from typing import Union, Tuple
+from typing import Union, Tuple, List
 
 import numpy as np
 from skimage.io import imread
 from skimage.color import rgb2gray
+from skimage.transform import rescale, resize
 
 from pymodaq.utils.logger import set_logger, get_module_name
-from pymodaq.utils.data import DataFromPlugins
+from pymodaq.utils.data import DataFromPlugins, DataToExport, DataRaw
 from pymodaq.utils import math_utils as mutils
 
 logger = set_logger(get_module_name(__file__))
@@ -109,10 +110,8 @@ class GBSAX:
 
         self.field_object: np.ndarray = None
         self.field_image: np.nd_array = None
+        self.field_object_phase: np.ndarray = None
         self._sse: float = 100
-
-    def evolve(self):
-        ...
 
     @property
     def input_size(self):
@@ -125,11 +124,27 @@ class GBSAX:
             self.input_intensity = InputIntensity(npixels=self.object_shape, size=self._input_size)
 
     def load_image(self, fname: Union[str, Path] = cheshire_cat_path):
-        img = imread(fname)
-        if len(img.shape) == 2:
-            self.target_intensity = img
-        elif len(img.shape) == 3:
-            self.target_intensity = rgb2gray(img[..., 0:3])
+        fname = Path(fname)
+        if fname.is_file():
+            try:
+                img = imread(fname)
+                if len(img.shape) == 2:
+                    target_intensity = img
+                elif len(img.shape) == 3:
+                    target_intensity = rgb2gray(img[..., 0:3])
+
+                self.set_target(target_intensity)
+            except Exception as e:
+                logger.exception(str(e))
+
+    def load_target_data(self, data: DataRaw):
+        self.set_target(data[0])
+
+    def set_target(self, target_intensity: np.ndarray):
+
+        target_intensity = self.check_target_object_ratio(target_intensity)
+
+        self.target_intensity = target_intensity
 
         self.image_shape = self.target_intensity.shape
         self.target_intensity = self.input_intensity.normalise_to_intensity(self.target_intensity)
@@ -137,36 +152,56 @@ class GBSAX:
         self.set_phase_in_object_plane((np.random.rand(*self.object_shape) - 0.5) * 2 * np.pi)
         self.propagate_field()
 
-    def set_phase_in_object_plane(self, phase: np.ndarray):
-        if phase.shape == self.object_shape:
-            self.field_object = self.input_intensity.amplitude * np.exp(1j * phase)
+    def check_target_object_ratio(self, target: np.ndarray):
 
+        ratio = np.max(np.array(self.object_shape) / np.array(target.shape))
+        target = rescale(target, 1.1 * ratio)
+
+        return target
+
+    def set_phase_in_object_plane(self, phase: np.ndarray, induced_amplitude: np.ndarray = None):
+        self.field_object_phase = phase
+        if phase.shape == self.object_shape:
+            self.field_object = self.input_intensity.amplitude *\
+                                (induced_amplitude if induced_amplitude is not None else 1) * np.exp(1j * phase)
+            self.propagate_field()
         else:
             raise ValueError('The phase shape is incoherent with the parameters')
 
-    def get_npad(self):
-        npad = np.abs(np.array(self.object_shape) - np.array(self.image_shape)) / 2
-        npad = tuple(np.asarray(npad, int))
+    def get_phase(self):
+        return self.field_object_phase
 
-        return npad
+    def get_npad(self):
+        npad_before = (np.abs(np.array(self.object_shape) - np.array(self.image_shape)) // 2).astype(int)
+        npad_after = (npad_before + np.abs(np.array(self.object_shape) - np.array(self.image_shape)) % 2).astype(int)
+        return (npad_before[0], npad_after[0]), (npad_before[1], npad_after[1])
 
     def propagate_field(self):
-        npad = self.get_npad()
-        field_object_padded = np.pad(self.field_object, ((npad[0], npad[0]), (npad[1], npad[1])),
-                                     constant_values=(0, 0))
-
+        field_object_padded = np.pad(self.field_object, self.get_npad(), constant_values=(0, 0))
         self.field_image = fftshift(fft2(fftshift(field_object_padded))) / \
                            np.sqrt(np.prod(field_object_padded.shape))
 
-    def evolve_field(self):
+    def evolve_field(self) -> np.ndarray:
         npad = self.get_npad()
         self._sse = 100 * np.sum(np.abs(np.sqrt(self.target_intensity) - self.field_image)) ** 2 \
                     / np.prod(self.image_shape) / np.sum(self.target_intensity)
         field_image_corrected = np.sqrt(self.target_intensity) * np.exp(1j * np.angle(self.field_image))
         field_object_corrected = ifftshift(ifft2(ifftshift(field_image_corrected)))
+        field_object_corrected = field_object_corrected[npad[0][0] + 1:npad[0][0] + 1 + self.object_shape[0],
+                                 npad[1][0] + 1:npad[1][0] + 1 + self.object_shape[1]]
+        self.field_object_phase = np.angle(field_object_corrected)
+        return self.field_object_phase
 
-        self.set_phase_in_object_plane(np.angle(field_object_corrected[npad[0]+1:npad[0]+1+self.object_shape[0],
-                                                                       npad[1]+1:npad[1]+1+self.object_shape[1]]))
+    @property
+    def fitness(self) -> float:
+        return self._sse
+
+    def grab(self):
+        self.propagate_field()
+        return self.field_image
+
+    def evolve(self, input: DataToExport) -> np.ndarray:
+        return self.evolve_field()
 
     @property
     def sse(self):
