@@ -285,50 +285,40 @@ class OptimisationRunner(QtCore.QObject):
 
                 pop = self.optimisation_algorithm.ask()
                 # get the design space values of the algorithm
-                self.outputs = pop.get("X")
-                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
-                if not self.paused:
-                    self.modules_manager.move_actuators(self.output_to_actuators,
-                                                        self.output_to_actuators.mode,
-                                                        polling=False)
+                all_individuals = pop.get("X")
 
-                # Do the evaluation (measurements)
+                F = []
+                for individual in all_individuals:
+                    self.outputs = individual
+                    self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
+                    if not self.paused:
+                        self.modules_manager.move_actuators(self.output_to_actuators,
+                                                            self.output_to_actuators.mode,
+                                                            polling=False)
 
-                self.det_done_datas = self.modules_manager.grab_datas()
-                self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
+                    # Do the evaluation (measurements)
+                    self.det_done_datas = self.modules_manager.grab_datas()
+                    self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
+                    F.extend(self.inputs_from_dets.data[0].data)
 
-                # # EXECUTE THE optimisation
-
-                static = StaticProblem(self.optimisation_algorithm.problem, F=self.inputs_from_dets)
+                # Run the algo internal mechanic
+                static = StaticProblem(self.optimisation_algorithm.problem, F=np.array(F))
                 Evaluator().eval(static, pop)
                 # returned the evaluated individuals which have been evaluated or even modified
                 self.optimisation_algorithm.tell(infills=pop)
-                print(algorithm.n_gen, algorithm.evaluator.n_eval)
-
-                self.outputs: List[np.ndarray] = []
-                self.outputs = [self.optimisation_algorithm.evolve(self.inputs_from_dets)]
+                print(self.optimisation_algorithm.n_gen, self.optimisation_algorithm.evaluator.n_eval)
 
                 dte = DataToExport('algo',
                                    data=[DataCalculated('fitness',
-                                                        data=[np.array([self.optimisation_algorithm.fitness])]),
+                                                        data=[np.atleast_1d(np.squeeze(self.optimisation_algorithm.opt.get('F')))]),
+                                         DataCalculated('Best Individual',
+                                                        data=[np.atleast_1d(np.squeeze(self.optimisation_algorithm.opt.get('X')))]),
                                          ])
-
-                # # # APPLY THE population OUTPUT TO THE ACTUATOR
-                # if self.outputs is None:
-                #     self.outputs = [pid.setpoint for pid in self.pids]
-
-                dt = time.perf_counter() - self.current_time
-
-
-                dte.append(self.inputs_from_dets)
-                dte.append(self.output_to_actuators)
                 self.algo_output_signal.emit(dte)
-
-
 
                 self.current_time = time.perf_counter()
                 QtWidgets.QApplication.processEvents()
-                #QtCore.QThread.msleep(int(self.sample_time * 1000))
+
 
             logger.info('Optimisation loop exiting')
             self.modules_manager.connect_actuators(False)
@@ -345,9 +335,9 @@ def main(init_qt=True):
 
     if init_qt:  # used for the test suite
         app = QtWidgets.QApplication(sys.argv)
-        if config['style']['darkstyle']:
-            import qdarkstyle
-            app.setStyleSheet(qdarkstyle.load_stylesheet())
+
+        import qdarkstyle
+        app.setStyleSheet(qdarkstyle.load_stylesheet())
 
     from pymodaq.dashboard import DashBoard
 
@@ -359,7 +349,7 @@ def main(init_qt=True):
 
     dashboard = DashBoard(area)
     daq_scan = None
-    file = Path(get_set_preset_path()).joinpath(f"{'holography'}.xml")
+    file = Path(get_set_preset_path()).joinpath(f"{'pymoo_gaussian'}.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
         daq_scan = dashboard.load_extension_from_name('Optimisation')
