@@ -4,7 +4,7 @@ Created the 31/08/2023
 
 @author: Sebastien Weber
 """
-from abc import ABC, abstractproperty
+from abc import ABC, abstractproperty, abstractmethod
 from typing import List
 from pathlib import Path
 import importlib
@@ -13,7 +13,7 @@ import inspect
 import numpy as np
 import warnings
 
-from pymodaq.extensions.pid.utils import DataToActuatorPID, DataToExport
+from pymodaq.extensions.pid.utils import DataToExport
 from pymodaq.utils.managers.modules_manager import ModulesManager
 from pymodaq.utils.config import BaseConfig, USER
 from pymodaq.utils.daq_utils import find_dict_in_list_from_key_val, get_entrypoints
@@ -21,6 +21,11 @@ from pymodaq.utils.logger import set_logger, get_module_name
 from pymodaq.utils.plotting.data_viewers.viewer import ViewersEnum
 from pymodaq.utils.parameter import Parameter
 
+from pymoo.core.algorithm import Algorithm
+from pymoo.core.evaluator import Evaluator
+from pymoo.core.problem import Problem
+from pymoo.core.termination import NoTermination
+from pymoo.problems.static import StaticProblem
 
 logger = set_logger(get_module_name(__file__))
 
@@ -55,6 +60,27 @@ class DataToActuatorOpti(DataToExport):
 
     def __repr__(self):
         return f'{super().__repr__()}: {self.mode}'
+
+
+class Population(np.ndarray):
+
+    @abstractmethod
+    def set(self, *args, **kwargs):
+        ...
+
+    def get(self, *args, to_numpy=True, **kwargs):
+        ...
+
+
+class OptimisationAlgorithm(ABC):
+
+    @abstractmethod
+    def ask(self) -> Population:
+        ...
+
+    @abstractmethod
+    def tell(self):
+        ...
 
 
 class OptimisationModelGeneric(ABC):
@@ -142,16 +168,16 @@ def get_optimisation_models(model_name=None):
     list: list of disct containting the name and python module of the found models
     """
     models_import = []
-    discovered_models = get_entrypoints(group='pymodaq.optimisation_models')
+    discovered_models = get_entrypoints(group='pymodaq.models')
     if len(discovered_models) > 0:
         for pkg in discovered_models:
             try:
                 module = importlib.import_module(pkg.value)
                 module_name = pkg.value
 
-                for mod in pkgutil.iter_modules([str(Path(module.__file__).parent.joinpath('optimisation_models'))]):
+                for mod in pkgutil.iter_modules([str(Path(module.__file__).parent.joinpath('models'))]):
                     try:
-                        model_module = importlib.import_module(f'{module_name}.optimisation_models.{mod.name}', module)
+                        model_module = importlib.import_module(f'{module_name}.models.{mod.name}', module)
                         classes = inspect.getmembers(model_module, inspect.isclass)
                         for name, klass in classes:
                             if klass.__name__ in model_module.__name__:

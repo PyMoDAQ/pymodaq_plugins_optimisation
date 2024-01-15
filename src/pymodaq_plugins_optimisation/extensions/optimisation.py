@@ -11,10 +11,17 @@ from pymodaq.utils.plotting.data_viewers.viewer0D import Viewer0D
 
 
 from pymodaq.utils.plotting.data_viewers.viewer import ViewerDispatcher
-from pymodaq_plugins_optimisation.utils import get_optimisation_models, OptimisationModelGeneric, DataToActuatorOpti
+from pymodaq_plugins_optimisation.utils import (get_optimisation_models, OptimisationModelGeneric, DataToActuatorOpti,
+OptimisationAlgorithm)
+
 from pymodaq.utils.gui_utils import QLED
 from pymodaq.utils.managers.modules_manager import ModulesManager
 
+from pymoo.core.algorithm import Algorithm
+from pymoo.core.evaluator import Evaluator
+from pymoo.core.problem import Problem
+from pymoo.core.termination import NoTermination
+from pymoo.problems.static import StaticProblem
 
 from pymodaq_plugins_optimisation import config
 logger = utils.set_logger(utils.get_module_name(__file__))
@@ -230,7 +237,7 @@ class OptimisationRunner(QtCore.QObject):
         self.running = True
         self.paused = False
 
-        self.optimisation_algorithm = self.model_class.optimisation_algorithm
+        self.optimisation_algorithm: OptimisationAlgorithm = self.model_class.optimisation_algorithm
 
     @QtCore.Slot(utils.ThreadCommand)
     def queue_command(self, command: utils.ThreadCommand):
@@ -275,14 +282,29 @@ class OptimisationRunner(QtCore.QObject):
             self.current_time = time.perf_counter()
             logger.info('Optimisation loop starting')
             while self.running:
-                # print('input: {}'.format(self.input))
-                # # GRAB DATA FIRST AND WAIT ALL DETECTORS RETURNED
+
+                pop = self.optimisation_algorithm.ask()
+                # get the design space values of the algorithm
+                self.outputs = pop.get("X")
+                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
+                if not self.paused:
+                    self.modules_manager.move_actuators(self.output_to_actuators,
+                                                        self.output_to_actuators.mode,
+                                                        polling=False)
+
+                # Do the evaluation (measurements)
 
                 self.det_done_datas = self.modules_manager.grab_datas()
-
                 self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
 
                 # # EXECUTE THE optimisation
+
+                static = StaticProblem(self.optimisation_algorithm.problem, F=self.inputs_from_dets)
+                Evaluator().eval(static, pop)
+                # returned the evaluated individuals which have been evaluated or even modified
+                self.optimisation_algorithm.tell(infills=pop)
+                print(algorithm.n_gen, algorithm.evaluator.n_eval)
+
                 self.outputs: List[np.ndarray] = []
                 self.outputs = [self.optimisation_algorithm.evolve(self.inputs_from_dets)]
 
@@ -296,16 +318,13 @@ class OptimisationRunner(QtCore.QObject):
                 #     self.outputs = [pid.setpoint for pid in self.pids]
 
                 dt = time.perf_counter() - self.current_time
-                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
+
 
                 dte.append(self.inputs_from_dets)
                 dte.append(self.output_to_actuators)
                 self.algo_output_signal.emit(dte)
 
-                if not self.paused:
-                    self.modules_manager.move_actuators(self.output_to_actuators,
-                                                        self.output_to_actuators.mode,
-                                                        polling=False)
+
 
                 self.current_time = time.perf_counter()
                 QtWidgets.QApplication.processEvents()
