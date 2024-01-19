@@ -179,7 +179,7 @@ class Optimisation(gutils.CustomApp):
             self.set_action_enabled('ini_model', False)
 
             self.viewer_observable.update_viewers(['Viewer0D'] + self.model_class.observables_dim,
-                                                  ['Fitness', 'Observable', 'Individual'])
+                                                  ['Fitness', 'Individual'])
 
         except Exception as e:
             logger.exception(str(e))
@@ -309,10 +309,8 @@ class OptimisationRunner(QtCore.QObject):
                 print(self.optimisation_algorithm.n_gen, self.optimisation_algorithm.evaluator.n_eval)
 
                 dte = DataToExport('algo',
-                                   data=[DataCalculated('fitness',
-                                                        data=[np.atleast_1d(np.squeeze(self.optimisation_algorithm.opt.get('F')))]),
-                                         DataCalculated('Best Individual',
-                                                        data=[np.atleast_1d(np.squeeze(self.optimisation_algorithm.opt.get('X')))]),
+                                   data=[self.individual_as_data(self.optimisation_algorithm.opt.get('F'), 'Fitness'),
+                                         self.individual_as_data(self.optimisation_algorithm.opt.get('X'), 'Individual'),
                                          ])
                 self.algo_output_signal.emit(dte)
 
@@ -326,6 +324,11 @@ class OptimisationRunner(QtCore.QObject):
 
         except Exception as e:
             logger.exception(str(e))
+
+    @staticmethod
+    def individual_as_data(individual: np.ndarray, name: str = 'Individual') -> DataCalculated:
+        return DataCalculated(name, data=[np.atleast_1d(np.squeeze(coordinate)) for coordinate in
+                                          np.atleast_1d(np.squeeze(individual))])
 
 
 def main(init_qt=True):
@@ -349,7 +352,7 @@ def main(init_qt=True):
 
     dashboard = DashBoard(area)
     daq_scan = None
-    file = Path(get_set_preset_path()).joinpath(f"{'pymoo_gaussian'}.xml")
+    file = Path(get_set_preset_path()).joinpath(f"{'complex_data'}.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
         daq_scan = dashboard.load_extension_from_name('Optimisation')
