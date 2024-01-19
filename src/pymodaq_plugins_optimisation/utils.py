@@ -62,24 +62,23 @@ class DataToActuatorOpti(DataToExport):
         return f'{super().__repr__()}: {self.mode}'
 
 
-class Population(np.ndarray):
-
-    @abstractmethod
-    def set(self, *args, **kwargs):
-        ...
-
-    def get(self, *args, to_numpy=True, **kwargs):
-        ...
-
-
 class OptimisationAlgorithm(ABC):
 
     @abstractmethod
-    def ask(self) -> Population:
+    def ask(self) -> np.ndarray:
         ...
 
+    def tell(self, function_value: float):
+        ...
+
+    @property
     @abstractmethod
-    def tell(self):
+    def best_fitness(self) -> float:
+        ...
+
+    @property
+    @abstractmethod
+    def best_individual(self) -> np.ndarray:
         ...
 
 
