@@ -283,34 +283,27 @@ class OptimisationRunner(QtCore.QObject):
             logger.info('Optimisation loop starting')
             while self.running:
 
-                pop = self.optimisation_algorithm.ask()
-                # get the design space values of the algorithm
-                all_individuals = pop.get("X")
+                next_target = self.optimisation_algorithm.ask()
 
-                F = []
-                for individual in all_individuals:
-                    self.outputs = individual
-                    self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
-                    if not self.paused:
-                        self.modules_manager.move_actuators(self.output_to_actuators,
-                                                            self.output_to_actuators.mode,
-                                                            polling=False)
+                self.outputs = next_target
+                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
+                if not self.paused:
+                    self.modules_manager.move_actuators(self.output_to_actuators,
+                                                        self.output_to_actuators.mode,
+                                                        polling=False)
 
-                    # Do the evaluation (measurements)
-                    self.det_done_datas = self.modules_manager.grab_datas()
-                    self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
-                    F.extend(self.inputs_from_dets.data[0].data)
+                # Do the evaluation (measurements)
+                self.det_done_datas = self.modules_manager.grab_datas()
+                self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
 
                 # Run the algo internal mechanic
-                static = StaticProblem(self.optimisation_algorithm.problem, F=np.array(F))
-                Evaluator().eval(static, pop)
-                # returned the evaluated individuals which have been evaluated or even modified
-                self.optimisation_algorithm.tell(infills=pop)
-                print(self.optimisation_algorithm.n_gen, self.optimisation_algorithm.evaluator.n_eval)
+                self.optimisation_algorithm.tell(float(self.inputs_from_dets.data[0].data[0][0]))
 
                 dte = DataToExport('algo',
-                                   data=[self.individual_as_data(self.optimisation_algorithm.opt.get('F'), 'Fitness'),
-                                         self.individual_as_data(self.optimisation_algorithm.opt.get('X'), 'Individual'),
+                                   data=[self.individual_as_data(np.array([self.optimisation_algorithm.best_fitness]),
+                                                                 'Fitness'),
+                                         self.individual_as_data(self.optimisation_algorithm.best_individual,
+                                                                 'Individual'),
                                          ])
                 self.algo_output_signal.emit(dte)
 
