@@ -197,10 +197,15 @@ class Optimisation(gutils.CustomApp):
             self.runner_thread.start()
             self.get_action('runner_led').set_as_true()
 
+        else:
+            if self.is_action_checked('run'):
+                self.get_action('run').trigger()
+                QtWidgets.QApplication.processEvents()
+
+            self.runner_thread.terminate()
+            self.get_action('runner_led').set_as_false()
+
     def process_output(self, data: DataToExport):
-        # fitness
-        # self.viewer_fitness.show_data(data.get_data_from_name('fitness'))
-        # data.remove()
         self.viewer_observable.show_data(data)
 
     def enable_controls_opti(self, enable: bool):
@@ -253,13 +258,6 @@ class OptimisationRunner(QtCore.QObject):
             self.running = False
 
     def pause_opti(self, pause_state: bool):
-        # for ind, pid in enumerate(self.pids):
-        #     if pause_state:
-        #         pid.set_auto_mode(False)
-        #         logger.info('Stabilization paused')
-        #     else:
-        #         pid.set_auto_mode(True, self.outputs[ind])
-        #         logger.info('Stabilization restarted from pause')
         self.paused = pause_state
 
     def run_opti(self, sync_detectors=True, sync_acts=False):
@@ -282,30 +280,30 @@ class OptimisationRunner(QtCore.QObject):
             self.current_time = time.perf_counter()
             logger.info('Optimisation loop starting')
             while self.running:
-
-                next_target = self.optimisation_algorithm.ask()
-
-                self.outputs = next_target
-                self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
                 if not self.paused:
+                    next_target = self.optimisation_algorithm.ask()
+
+                    self.outputs = next_target
+                    self.output_to_actuators: DataToActuatorOpti = self.model_class.convert_output(self.outputs)
+
                     self.modules_manager.move_actuators(self.output_to_actuators,
                                                         self.output_to_actuators.mode,
                                                         polling=False)
 
-                # Do the evaluation (measurements)
-                self.det_done_datas = self.modules_manager.grab_datas()
-                self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
+                    # Do the evaluation (measurements)
+                    self.det_done_datas = self.modules_manager.grab_datas()
+                    self.inputs_from_dets = self.model_class.convert_input(self.det_done_datas)
 
-                # Run the algo internal mechanic
-                self.optimisation_algorithm.tell(float(self.inputs_from_dets.data[0].data[0][0]))
+                    # Run the algo internal mechanic
+                    self.optimisation_algorithm.tell(float(self.inputs_from_dets.data[0].data[0][0]))
 
-                dte = DataToExport('algo',
-                                   data=[self.individual_as_data(np.array([self.optimisation_algorithm.best_fitness]),
-                                                                 'Fitness'),
-                                         self.individual_as_data(self.optimisation_algorithm.best_individual,
-                                                                 'Individual'),
-                                         ])
-                self.algo_output_signal.emit(dte)
+                    dte = DataToExport('algo',
+                                       data=[self.individual_as_data(np.array([self.optimisation_algorithm.best_fitness]),
+                                                                     'Fitness'),
+                                             self.individual_as_data(self.optimisation_algorithm.best_individual,
+                                                                     'Individual'),
+                                             ])
+                    self.algo_output_signal.emit(dte)
 
                 self.current_time = time.perf_counter()
                 QtWidgets.QApplication.processEvents()
