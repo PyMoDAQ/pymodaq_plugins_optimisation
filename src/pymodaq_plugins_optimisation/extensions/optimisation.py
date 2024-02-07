@@ -15,9 +15,11 @@ from pymodaq_plugins_optimisation.utils import get_optimisation_models, Optimisa
 from pymodaq.utils.gui_utils import QLED
 from pymodaq.utils.managers.modules_manager import ModulesManager
 
-
-from pymodaq_plugins_optimisation import config
+from pymodaq.utils.config import Config
+from pymodaq_plugins_optimisation import config as plugin_config
 logger = utils.set_logger(utils.get_module_name(__file__))
+
+config = Config()
 
 EXTENSION_NAME = 'Optimisation'
 CLASS_NAME = 'Optimisation'
@@ -326,7 +328,7 @@ def main(init_qt=True):
 
     if init_qt:  # used for the test suite
         app = QtWidgets.QApplication(sys.argv)
-        if config['style']['darkstyle']:
+        if config('style', 'darkstyle'):
             import qdarkstyle
             app.setStyleSheet(qdarkstyle.load_stylesheet())
 
