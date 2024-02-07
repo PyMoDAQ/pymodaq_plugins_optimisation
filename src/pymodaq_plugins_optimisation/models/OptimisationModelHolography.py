@@ -24,7 +24,7 @@ class OptimisationModelHolography(OptimisationModelHolographyMock):
         self.set_source()
         self.optimisation_algorithm.load_image()
 
-        calib = np.load(Path(r'C:\Data\2023\calibration_holography.npy'))
+        calib = np.load(Path(r'..\resources\calibration_holography.npy'))
         grey = calib[0, :]
         phase = calib[1, :]
         self.phase_polyfit = np.polynomial.Polynomial.fit(phase, grey, 11)
