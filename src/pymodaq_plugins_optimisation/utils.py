@@ -142,16 +142,16 @@ def get_optimisation_models(model_name=None):
     list: list of disct containting the name and python module of the found models
     """
     models_import = []
-    discovered_models = get_entrypoints(group='pymodaq.optimisation_models')
+    discovered_models = get_entrypoints(group='pymodaq.models')
     if len(discovered_models) > 0:
         for pkg in discovered_models:
             try:
                 module = importlib.import_module(pkg.value)
                 module_name = pkg.value
 
-                for mod in pkgutil.iter_modules([str(Path(module.__file__).parent.joinpath('optimisation_models'))]):
+                for mod in pkgutil.iter_modules([str(Path(module.__file__).parent.joinpath('models'))]):
                     try:
-                        model_module = importlib.import_module(f'{module_name}.optimisation_models.{mod.name}', module)
+                        model_module = importlib.import_module(f'{module_name}.models.{mod.name}', module)
                         classes = inspect.getmembers(model_module, inspect.isclass)
                         for name, klass in classes:
                             if klass.__name__ in model_module.__name__:
